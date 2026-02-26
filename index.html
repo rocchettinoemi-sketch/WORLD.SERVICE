@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WORLD SERVICE</title>
+
+<script src="https://unpkg.com/html5-qrcode"></script>
+
+<style>
+body{
+ font-family:'Segoe UI',Tahoma;
+ margin:0;
+ background:
+ linear-gradient(rgba(255,255,255,.93),rgba(255,255,255,.93)),
+ url("https://images.unsplash.com/photo-1503387762-592deb58ef4e");
+ background-size:cover;
+ min-height:100vh;
+}
+
+header{text-align:center;padding:10px;background:#ffffffdd;}
+header img{height:50px}
+
+.card{
+ background:#fff;
+ padding:16px;
+ margin:12px auto;
+ border-radius:12px;
+ width:95%;
+ max-width:420px;
+ box-shadow:0 4px 12px rgba(0,0,0,.12)
+}
+
+.hidden{display:none}
+
+button,input,select{
+ width:100%;
+ padding:12px;
+ margin:6px 0;
+ border-radius:8px;
+ border:1px solid #ccc;
+ font-size:16px
+}
+
+.green{background:#4CAF50;color:#fff}
+.blue{background:#2196F3;color:#fff}
+.gray{background:#9E9E9E;color:#fff}
+.orange{background:#ff9800;color:#fff}
+.red{background:#f44336;color:#fff}
+.purple{background:#3f51b5;color:#fff}
+
+.sep{margin:15px 0;border-top:1px dashed #ccc}
+#reader{width:100%;border-radius:10px}
+
+.homeBtn{
+ position:fixed;
+ bottom:15px;
+ right:15px;
+ width:42px;
+ height:42px;
+ border:none;
+ border-radius:50%;
+ background:#4CAF50;
+ color:#fff;
+ font-size:18px;
+}
+</style>
+</head>
+<body>
+
+<header>
+<img src="https://worldservice.it/wp-content/uploads/2020/05/logo2_400.png">
+</header>
+
+<div class="card hidden" id="loginCard">
+<h3>Primo accesso</h3>
+<input id="nome" placeholder="Nome">
+<input id="cognome" placeholder="Cognome">
+<button class="green" onclick="salvaUtente()">SALVA</button>
+</div>
+
+<div class="card hidden" id="scanCard">
+<h3>Scansiona QR Targa</h3>
+<div id="reader"></div>
+
+<div class="sep"></div>
+
+<input id="targaManuale" placeholder="Oppure inserisci targa manualmente">
+<button class="blue" onclick="usaTargaManuale()">USA TARGA</button>
+
+<div class="sep"></div>
+<button class="gray" onclick="apriPresenza()">OGGI NON USO IL MEZZO</button>
+</div>
+
+<div class="card hidden" id="menuCard">
+<div id="targaAttiva" style="font-weight:bold;margin-bottom:10px"></div>
+
+<select id="comune">
+<option value="">Seleziona Comune</option>
+<option>VESCOVATO</option>
+<option>BONEMERSE</option>
+</select>
+
+<button id="btnTrasbordo" class="gray" onclick="apriTrasbordo()">TRASBORDO</button>
+<button id="btnImpianto" class="blue" onclick="apriImpianto()">SCARICO IMPIANTO</button>
+
+<div class="sep"></div>
+
+<button class="purple" onclick="fineServizio()">FINE SERVIZIO</button>
+</div>
+
+<div class="card hidden" id="trasbordoCard">
+<input id="kmScarico" type="number" placeholder="KM scarico">
+<button class="green" onclick="salvaTrasbordo()">SALVA</button>
+</div>
+
+<div class="card hidden" id="impiantoCard">
+<select id="cerSelect">
+<option value="">Seleziona CER</option>
+<option value="20.01.08">20.01.08</option>
+<option value="20.01.01">20.01.01</option>
+<option value="20.01.02">20.01.02</option>
+<option value="20.01.39">20.01.39</option>
+<option value="20.03.01">20.03.01</option>
+<option value="20.02.01">20.02.01</option>
+</select>
+
+<input id="cerManuale" placeholder="Oppure inserisci CER manualmente">
+<input id="peso" type="number" placeholder="Peso (kg)">
+<input id="kmImp" type="number" placeholder="KM">
+<button class="green" onclick="salvaImpianto()">SALVA</button>
+</div>
+
+<button class="homeBtn" onclick="init()">🏠</button>
+
+<script>
+
+const API_URL="https://script.google.com/macros/s/AKfycbyoFBDh6Jxygz93gmMTBbXlJARA8nTpxlSrgkIF3SzWJ9e--o2QcvkSfsrjEmKmJKDn/exec";
+let html5Qr;
+let trackingInterval=null;
+
+function nowIT(){ return new Date().toLocaleString("it-IT"); }
+function hideAll(){ document.querySelectorAll('.card').forEach(c=>c.classList.add('hidden')); }
+
+document.addEventListener("DOMContentLoaded",init);
+
+function init(){
+
+ hideAll();
+ let utente=JSON.parse(localStorage.getItem("utente"));
+ let mezzo=JSON.parse(localStorage.getItem("mezzo"));
+
+ if(!utente){ loginCard.classList.remove("hidden"); return; }
+ if(!mezzo || !mezzo.attivo){ apriScan(); return; }
+
+ mostraMenu();
+}
+
+function salvaUtente(){
+ if(!nome.value||!cognome.value)return alert("Compila campi");
+ localStorage.setItem("utente",JSON.stringify({
+  nome:nome.value,cognome:cognome.value
+ }));
+ init();
+}
+
+function apriScan(){
+ hideAll();
+ scanCard.classList.remove("hidden");
+ html5Qr=new Html5Qrcode("reader");
+ Html5Qrcode.getCameras().then(devices=>{
+  if(devices.length){
+   html5Qr.start({facingMode:"environment"},{fps:10,qrbox:250},qrSuccess);
+  }
+ });
+}
+
+function usaTargaManuale(){
+ let targa=document.getElementById("targaManuale").value.trim();
+ if(!targa)return alert("Inserisci targa");
+ qrSuccess(targa.toUpperCase());
+}
+
+function qrSuccess(decodedText){
+
+ if(html5Qr){ html5Qr.stop(); }
+
+ let kmIniziali=prompt("Inserisci KM iniziali");
+ if(!kmIniziali)return alert("KM obbligatori");
+
+ let utente=JSON.parse(localStorage.getItem("utente"));
+
+ localStorage.setItem("mezzo",JSON.stringify({
+  targa:decodedText,
+  attivo:true
+ }));
+
+ send({
+  action:"INIZIO_SERVIZIO",
+  targa:decodedText,
+  autista:utente.nome+" "+utente.cognome,
+  kmIniziali:kmIniziali,
+  data:nowIT()
+ });
+
+ mostraMenu();
+}
+
+function mostraMenu(){
+
+ hideAll();
+ let mezzo=JSON.parse(localStorage.getItem("mezzo"));
+ let targa=mezzo.targa;
+
+ document.getElementById("targaAttiva").innerText="MEZZO ATTIVO: "+targa;
+
+ btnTrasbordo.style.display="block";
+
+ if(targa==="FR021RE" || targa==="FR022RE"){
+   btnTrasbordo.style.display="none";
+ }
+
+ menuCard.classList.remove("hidden");
+}
+
+function send(data){
+
+ fetch(API_URL,{
+   method:"POST",
+   body:JSON.stringify(data)
+ })
+ .then(r=>r.json())
+ .then(()=>{ alert("Dati salvati con successo"); })
+ .catch(()=>{ alert("Errore di collegamento"); });
+}
+
+function apriTrasbordo(){
+ if(!comune.value)return alert("Seleziona il Comune");
+ hideAll();
+ trasbordoCard.classList.remove("hidden");
+}
+
+function salvaTrasbordo(){
+ if(!kmScarico.value)return alert("Inserisci KM");
+
+ let mezzo=JSON.parse(localStorage.getItem("mezzo"));
+
+ send({
+  sheet:"SCARICHI",
+  row:[
+   nowIT(),
+   "TRASBORDO",
+   comune.value,
+   "",
+   kmScarico.value,
+   "",
+   mezzo.targa
+  ]
+ });
+
+ kmScarico.value="";
+ init();
+}
+
+function apriImpianto(){
+ if(!comune.value)return alert("Seleziona il Comune");
+ hideAll();
+ impiantoCard.classList.remove("hidden");
+}
+
+function salvaImpianto(){
+
+ if(!kmImp.value)return alert("Inserisci KM");
+
+ let cerFinale=cerManuale.value?cerManuale.value:cerSelect.value;
+ if(!cerFinale)return alert("Seleziona CER");
+
+ let mezzo=JSON.parse(localStorage.getItem("mezzo"));
+
+ send({
+  sheet:"SCARICHI",
+  row:[
+   nowIT(),
+   "IMPIANTO",
+   comune.value,
+   cerFinale,
+   kmImp.value,
+   peso.value,
+   mezzo.targa
+  ]
+ });
+
+ cerSelect.selectedIndex=0;
+ cerManuale.value="";
+ peso.value="";
+ kmImp.value="";
+ init();
+}
+
+function fineServizio(){
+
+ let mezzo=JSON.parse(localStorage.getItem("mezzo"));
+ if(!mezzo)return;
+
+ let kmFinali=prompt("Inserisci KM finali");
+ if(!kmFinali)return alert("KM obbligatori");
+
+ send({
+  action:"FINE_SERVIZIO",
+  targa:mezzo.targa,
+  kmFinali:kmFinali,
+  data:nowIT()
+ });
+
+ localStorage.removeItem("mezzo");
+ init();
+}
+
+</script>
+</body>
+</html>
